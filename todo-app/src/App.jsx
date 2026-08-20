@@ -1,26 +1,30 @@
 import { useState } from 'react'
+import { useRef } from 'react'
 
 function App() {
-  const listItems = [
-    { id: 1, text: '리액트 공부하기' },
-    { id: 2, text: '점심 먹기' },
-    { id: 3, text: '운동하기' },
-  ]
-  function handleAddTodo() {
 
+  const inputValue = useRef(null);
+  const [todos, setTodos] = useState([])
+
+  function handleAddTodo(e) {
+    // e.preventDefault();
+    setTodos([...todos, {
+      id: todos.length + 1,
+      text: inputValue.current.value
+    }]);
   }
 
 
   return (
     <>
-      <input type="text" placeholder="할 일" />
+      <input type="text" placeholder="할 일" ref={inputValue} />
       <button onClick={handleAddTodo}>
         추가
       </button>
 
       <ul>
-        {listItems.map(
-          item => <li key={item.id}>{item.text}</li>
+        {todos.map(
+          todo => <li key={todo.id}>{todo.text}</li>
         )}
       </ul>
     </>
