@@ -1,23 +1,28 @@
 import { useState } from 'react'
-import { useRef } from 'react'
 
 function App() {
 
-  const inputValue = useRef(null);
+  const [inputValue, setInputValue] = useState('');
   const [todos, setTodos] = useState([])
 
   function handleAddTodo(e) {
     // e.preventDefault();
     setTodos([...todos, {
-      id: todos.length + 1,
-      text: inputValue.current.value
+      id: Crypto.randomUUID(),
+      text: inputValue
     }]);
+    setInputValue('');
   }
 
 
   return (
     <>
-      <input type="text" placeholder="할 일" ref={inputValue} />
+      <input
+        type="text"
+        placeholder="할 일"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+      />
       <button onClick={handleAddTodo}>
         추가
       </button>
