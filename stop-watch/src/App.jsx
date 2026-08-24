@@ -1,11 +1,34 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import heroImg from './assets/hero.png'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import './App.css'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [time, setTime] = useState(0);
+  const [isRunning, setIsRunning] = useState(false);
+  const [timeLabs, setTimeLabs] = useState([]);
+
+
+  // TODO : prev 대신 time 써주는건 안되는지?
+  useEffect(() => {
+    if (isRunning === true) {
+      const id = setInterval(() => {
+        setTime((prev) => prev + 1)
+      }, 1000)
+
+      return () => clearInterval(id);
+    }
+    return;
+  }, [isRunning]);
+
+  function handleAddTimeLabs() {
+    setTimeLabs([...timeLabs, {
+      id: crypto.randomUUID,
+      text: time
+    }]);
+    timeLabs.forEach(x => { console.log(x) });
+  }
 
   return (
     <>
@@ -16,17 +39,42 @@ function App() {
           <img src={viteLogo} className="vite" alt="Vite logo" />
         </div>
         <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
+          <h1>{time}</h1>
+          {/* TODO : 처음에 왜 { }는 안되었는지 */}
+          {timeLabs.map(timeLab => (
+            <ul key={timeLab.id}>{timeLab.text}</ul>
+          ))}
+
         </div>
         <button
           type="button"
           className="counter"
-          onClick={() => setCount((count) => count + 1)}
+          onClick={() => setIsRunning((true))}
         >
-          Count is {count}
+          시작
+        </button>
+        <button
+          type="button"
+          className="counter"
+          onClick={() => setIsRunning((false))}
+        >
+          정지
+        </button>
+        {isRunning === false && time > 0 && (
+          <button
+            type="button"
+            className="counter"
+          >
+            리셋
+          </button>
+        )}
+        <button
+          type="button"
+          className="counter"
+          //TODO : () => 으로 처음에 함수형 왜 동작 안했는지?
+          onClick={handleAddTimeLabs}
+        >
+          랩
         </button>
       </section>
 
