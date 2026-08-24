@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 function App() {
 
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState(() => {
+    localStorage.getItem('inputValue') || '';
+  });
   const [todos, setTodos] = useState([])
   const [editingTodoId, setEditingTodoId] = useState(null);
 
