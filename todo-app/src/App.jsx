@@ -4,14 +4,36 @@ function App() {
 
   const [inputValue, setInputValue] = useState('');
   const [todos, setTodos] = useState([])
+  const [editingTodoId, setEditingTodoId] = useState(null);
 
   function handleAddTodo(e) {
-    // e.preventDefault();
+    if (inputValue.trim() === '') {
+      return;
+    }
     setTodos([...todos, {
-      id: Crypto.randomUUID(),
+      id: crypto.randomUUID(),
       text: inputValue
     }]);
     setInputValue('');
+  }
+
+  function handleDeleteTodo(id) {
+    setTodos(todos.filter(todo => todo.id !== id));
+  }
+
+  function handleEditTodo(id, newText) {
+    if (newText === null || newText.trim() === '') {
+      return;
+    }
+
+    setTodos(todos.map(todo => {
+      if (todo.id === id) {
+        return { ...todo, text: newText };
+      }
+      return todo;
+    }));
+
+    setEditingTodoId(null);
   }
 
 
@@ -29,7 +51,36 @@ function App() {
 
       <ul>
         {todos.map(
-          todo => <li key={todo.id}>{todo.text}</li>
+          todo => (
+            <li key={todo.id}>
+              {editingTodoId === todo.id && (
+                <input
+                  type="text"
+                  defaultValue={todo.text}
+                  onBlur={(e) => handleEditTodo(todo.id, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleEditTodo(todo.id, e.target.value);
+                    }
+                    if (e.key === 'Escape') {
+                      setEditingTodoId(null);
+                    }
+                  }}
+                />
+              )}
+              {editingTodoId !== todo.id && (
+                <>
+                  <span>{todo.text}</span>
+                  <button onClick={() => setEditingTodoId(todo.id)}>
+                    수정
+                  </button>
+                </>
+              )}
+              <button onClick={() => handleDeleteTodo(todo.id)}>
+                삭제
+              </button>
+            </li>
+          )
         )}
       </ul>
     </>
