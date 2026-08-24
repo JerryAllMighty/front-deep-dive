@@ -2,11 +2,16 @@ import { useState, useEffect } from 'react'
 
 function App() {
 
-  const [inputValue, setInputValue] = useState(() => {
-    localStorage.getItem('inputValue') || '';
+  const [inputValue, setInputValue] = useState('');
+  const [todos, setTodos] = useState(() => {
+    const savedTodos = localStorage.getItem('todos');
+    return savedTodos ? JSON.parse(savedTodos) : [];
   });
-  const [todos, setTodos] = useState([])
   const [editingTodoId, setEditingTodoId] = useState(null);
+
+  useEffect(() => {
+    localStorage.setItem('todos', JSON.stringify(todos));
+  }, [todos]);
 
   function handleAddTodo(e) {
     if (inputValue.trim() === '') {
