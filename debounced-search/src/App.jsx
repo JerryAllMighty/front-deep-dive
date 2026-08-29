@@ -3,9 +3,11 @@ import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import './App.css'
 import { useDebounce } from './useDebounce'
+import { useState } from 'react'
 
 function App() {
-  const { inputValue, setInputValue, searchResults } = useDebounce();
+  const [inputValue, setInputValue] = useState('');
+  const { searchResults } = useDebounce(inputValue, 300);
   return (
     <>
       <section id="center">
@@ -16,10 +18,11 @@ function App() {
         </div>
         <div>
           <input
+            value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
           ></input>
         </div>
-        {inputValue !== null && searchResults.length === 0 && (
+        {inputValue.trim() !== `` && searchResults.length === 0 && (
           <>
             <span>결과 없음</span>
           </>
