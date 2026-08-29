@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-export function useDebounce(inputValue, delayTime) {
+export function useDebounce(inputValue) {
     const [searchResults, setSearchResults] = useState([]);
     const searchArray = [
         { id: 1, text: 't' }, { id: 2, text: 'te' },
@@ -8,13 +8,13 @@ export function useDebounce(inputValue, delayTime) {
     ];
 
     useEffect(() => {
-        let timerId = setTimeout(() => {
+        const timerId = setTimeout(() => {
             search();
         }, delayTime);
         return () => {
             clearTimeout(timerId);
         };
-    }, [inputValue]);
+    }, [inputValue, delayTime]);
 
     function search() {
         const results = searchArray.filter(x =>

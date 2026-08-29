@@ -27,7 +27,7 @@ function App() {
             <span>결과 없음</span>
           </>
         )}
-        {inputValue !== null && searchResults.length !== 0 && (
+        {inputValue.trim() !== '' && searchResults.length !== 0 && (
           <>
             <ul>
               {searchResults.map(searchResult => (
