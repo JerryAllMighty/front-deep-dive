@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect } from 'react'
 import { useFormValidation } from './useFormValidation'
 import heroImg from './assets/hero.png'
 import reactLogo from './assets/react.svg'
@@ -6,19 +6,14 @@ import viteLogo from './assets/vite.svg'
 import './App.css'
 
 function App() {
-  const [form, setForm] = useState(null);
-  const { nameInputRef, emailInputRef, passwordInputRef, isNameInputValid, isEmailInputValid, isPasswordInputValid, validateInput } = useFormValidation(form);
 
-  function handleForm() {
-    console.log('handle');
-    // 굳이 묶어서 상태의 변화를 체크하는 이유가 있을까? 어차피 from 제출시 한꺼번에 값 그대로 가면 그만 아닌가? 리렌더링이 필요한가?
-    setForm({
-      ...form,
-      name: nameInputRef.current.value,
-      email: emailInputRef.current.value,
-      password: passwordInputRef.current.value
-    });
-  };
+  const { nameInputRef, emailInputRef, passwordInputRef,
+    isNameInputValid, isEmailInputValid, isPasswordInputValid, validateInput }
+    = useFormValidation();
+
+  useEffect(() => {
+    nameInputRef.current.focus();
+  }, []);
 
   return (
     <>
@@ -29,8 +24,6 @@ function App() {
           <img src={viteLogo} className="vite" alt="Vite logo" />
         </div>
         <form
-          value={form}
-          onChange={() => handleForm()}
           onSubmit={e =>
             validateInput(e)}>
           <input ref={nameInputRef} placeholder='이름을 입력해주세요'></input>
@@ -45,7 +38,7 @@ function App() {
               <span>이메일은 @이 필수입니다</span>
             </>
           )}
-          <input ref={passwordInputRef} placeholder='비밀번호를 입력해주세요'></input>
+          <input type='password' ref={passwordInputRef} placeholder='비밀번호를 입력해주세요'></input>
           <br></br>{!isPasswordInputValid && (
             <>
               <span>비밀번호는 8자 미만일 수 없습니다</span>
