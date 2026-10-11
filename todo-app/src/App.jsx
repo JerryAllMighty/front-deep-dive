@@ -5,8 +5,6 @@ import {AddPage} from "./AddPage.jsx";
 import {DetailPage} from "./DetailPage.jsx";
 
 function App() {
-    const [editingTodoId, setEditingTodoId] = useState(null);
-
     const [todos, setTodos] = useState(() => {
         const savedTodos = localStorage.getItem('todos');
         return savedTodos ? JSON.parse(savedTodos) : [];
@@ -36,14 +34,10 @@ function App() {
             return;
         }
 
-        setTodos(todos.map(todo => {
-            if (todo.id === id) {
-                return {...todo, text: text};
-            }
-            return todo;
-        }));
+        setTodos(todos.map(todo =>
+            todo.id === id ?  {...todo, text: text} : todo));
 
-        setEditingTodoId(null);
+        return true;
     }
 
     return (
@@ -52,8 +46,7 @@ function App() {
                 <Route element={<Outlet context={
                     {
                         todos,
-                        handleAddTodo, handleEditTodo, handleDeleteTodo,
-                        editingTodoId, setEditingTodoId}}></Outlet>}>
+                        handleAddTodo, handleEditTodo, handleDeleteTodo}}></Outlet>}>
                     <Route index element={<ListPage />}>
                     </Route>
                     <Route path={"/"} element={<ListPage />}>

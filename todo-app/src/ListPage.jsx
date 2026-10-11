@@ -13,11 +13,11 @@ export function ListPage() {
             <ul>
                 {todos.map(
                     todo => (
-                        <Link to={`/todos/${todo.id}`}>
-                            <li key={todo.id}>
-                                {todo.text}
-                            </li>
-                         </Link>
+                        <li key={todo.id}>
+                            <Link to={`/todos/${todo.id}`}>
+                            </Link>
+                            {todo.text}
+                        </li>
                     )
                 )}
             </ul>
