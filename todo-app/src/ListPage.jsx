@@ -1,19 +1,19 @@
 import {useOutletContext, Link} from 'react-router-dom';
 
 export function ListPage() {
-   const {todos, handleAddTodo} = useOutletContext();
+   const {todos} = useOutletContext();
 
     return (
         <>
             <Link to="/new">
-            <button onClick={handleAddTodo}>
+            <button>
                 추가
             </button>
             </Link>
             <ul>
                 {todos.map(
                     todo => (
-                        <Link to={/todos/`${todo.id}`}>
+                        <Link to={`/todos/${todo.id}`}>
                             <li key={todo.id}>
                                 {todo.text}
                             </li>
