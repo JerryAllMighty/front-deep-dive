@@ -13,11 +13,12 @@ export function ListPage() {
             <ul>
                 {todos.map(
                     todo => (
-                        <li key={todo.id}>
+                        //TODO: 이렇게 키를 안 주고 했을 때 문제는 없을지?
+                        // <li key={todo.id}>
                             <Link to={`/todos/${todo.id}`}>
+                                {todo.text}
                             </Link>
-                            {todo.text}
-                        </li>
+                        // </li>
                     )
                 )}
             </ul>
