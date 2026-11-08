@@ -17,7 +17,7 @@ export function DetailPage() {
         )
     }
 
-    function remove(id) {
+    function remove() {
         handleDeleteTodo(id);
         navigate('/', {replace: true});
     }
@@ -26,7 +26,7 @@ export function DetailPage() {
         if (e.key === 'Enter') {
             if (handleEditTodo(id, e.currentTarget.value)) setIsEditing(false);
         } else if (e.key === 'Escape') {
-            setIsEditing(null);
+            setIsEditing(false);
         }
     }
 
@@ -37,7 +37,6 @@ export function DetailPage() {
                     autoFocus
                     defaultValue={todo.text}
                     type="text"
-                    //TODO : value를 todo.text로 설정했을 때 콘솔에 에러가 표시된 이유. 가변 설계가 필요해서?
                     onBlur={() => setIsEditing(false)}
                     onKeyDown={handleKeyDown}
                 />
@@ -49,7 +48,7 @@ export function DetailPage() {
                     </button>
                 </>
             )}
-            <button onClick={remove(todo.id)}>
+            <button onClick={remove}>
                 삭제
             </button>
         </>

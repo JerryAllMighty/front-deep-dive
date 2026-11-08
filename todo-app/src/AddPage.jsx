@@ -5,16 +5,13 @@ export function AddPage() {
     const navigate = useNavigate();
 
     const handleSubmit = (e) => {
-        // 1. 폼 제출 시 페이지가 새로고침되는 기본 동작을 차단합니다.
         e.preventDefault();
 
         const formData = new FormData(e.currentTarget);
         const todo = formData.get('addInput');
 
-        handleAddTodo(todo);
-
-        // 4. 목록 페이지로 이동합니다.
-        navigate('/');
+        if (!handleAddTodo(todo)) return;     // 실패하면 폼에 머무름
+        navigate('/', { replace: true });
     };
 
 

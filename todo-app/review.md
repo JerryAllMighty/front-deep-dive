@@ -1,310 +1,143 @@
-# 코드 리뷰 — T5. Todo 다중 페이지 라우팅 (2026-10-11)
+# 코드 리뷰 — T5. Todo 다중 페이지 라우팅 (통합본)
 
-- 대상: staged 상태의 `src/App.jsx`, `ListPage.jsx`, `AddPage.jsx`, `DetailPage.jsx`
-- `npm run lint`는 통과. 아래 지적은 대부분 lint가 못 잡는 **동작/설계** 문제
-- 우선순위: 🔴 버그(화면이 깨짐) → 🟠 설계(판단 포인트와 직결) → 🟡 다듬기
-
-## 잘한 점
-- 진행 순서(BrowserRouter → 레이아웃 라우트 → `<Outlet context>` → `useOutletContext`)를 그대로 따라 구조를 잡았다.
-- AddPage를 `FormData` + `defaultValue`(비제어 입력)로 짠 건 좋은 선택이다. 제출할 때 한 번만 값을 읽으면 되는 폼이라 state가 필요 없다. 지난번 `inputValue` 전역 state를 걷어낸 것도 맞는 방향이다.
-- `handleDeleteTodo`에서 `navigate()`를 빼고 페이지(`DetailPage.remove`)로 옮겼다. "어디로 갈지"는 화면이 정할 일이고, 데이터 함수가 정할 일이 아니다. 책임을 잘 나눴다.
+- 리뷰 이력: 1차 2026-10-11 → 2차 2026-11-08 → 3차 2026-11-08 → **최종 2026-11-08** (이 문서 하나로 통합)
+- 최종 대상: HEAD(`3c96bb8`) + 커밋 안 된 `App.jsx`, `AddPage.jsx`, `DetailPage.jsx`, `ListPage.jsx` 변경
+- **결론: 코드 기준 T5 완료.** 🔴/🟠/🟡 지적 전부 해결. 남은 건 셀프 체크 1~3번을 모범 답안 없이 다시 말해 보기(아래 [🏁 최종 리뷰] 참고)
+- `eslint src` 통과. 지적은 전부 lint가 못 잡는 **동작/설계** 문제
+- 우선순위: 🔴 버그 → 🟠 설계 → 🟡 다듬기
+- 📖 표시는 문서 맨 아래 **[📚 책 읽기 통합 목록]**의 번호를 가리킨다
 
 ---
 
-## 🔴 1. 없는 id로 들어가면 앱 전체가 흰 화면이 됨
+## 📋 진행 현황
 
-**지적** — `src/DetailPage.jsx:21`, `:24`
-
-```jsx
-{todo === undefined || todo === null && (<span>찾을 수 없음</span>)}
-{editingTodoId !== todo.id && ( ... )}
-```
-
-**이유**
-- `&&`가 `||`보다 **우선순위가 높다.** 그래서 21번 줄은 `todo === undefined || (todo === null && <span/>)`로 해석된다.
-  - todo가 없으면 → 결과는 `true` → React는 `true`를 아무것도 그리지 않는다. "찾을 수 없음"이 **절대 안 나온다.**
-- 이어서 24번 줄의 `todo.id`가 `undefined.id`가 되어 `TypeError` → 컴포넌트 트리 전체가 언마운트된다(흰 화면).
-- 재현: 주소창에 `/todos/abc` 입력. 또는 **할 일 삭제 → 브라우저 뒤로가기**(지운 항목의 상세 페이지로 돌아감). 두 번째가 실제 사용자가 겪을 경로다.
-
-**TODO 질문에 대한 답** ("undefined나 null로만 비교하면 될까?")
-- `Array.prototype.find`는 못 찾으면 **항상 `undefined`**를 돌려준다. `null`은 나올 일이 없다.
-- 그래서 `todo === undefined`면 충분하고, 관용적으로는 `!todo`를 쓴다(객체는 항상 truthy라서 안전).
-- 핵심은 비교식이 아니라 **"없으면 그 아래 코드를 아예 실행하지 않게" 막는 것**이다. JSX 안에서 `&&`로 처리하면 아래쪽 JSX는 여전히 평가되기 때문에 크래시를 못 막는다. → **early return**을 쓴다.
-
-**수정 사항 + 예제 코드**
-
-Before
-```jsx
-const todo = todos.find((x) => x.id === id);
-...
-return (
-    <>
-        {todo === undefined || todo === null && (<span>찾을 수 없음</span>)}
-        {editingTodoId !== todo.id && ( ... )}
-```
-
-After
-```jsx
-const todo = todos.find((x) => x.id === id);
-
-if (!todo) {
-    return (
-        <>
-            <p>찾을 수 없는 할 일입니다.</p>
-            <Link to="/">목록으로</Link>
-        </>
-    );
-}
-
-// 여기부터는 todo가 반드시 있다고 믿고 써도 된다
-return ( ... );
-```
-
-> 자바로 치면 `Optional`을 꺼내기 전에 `if (opt.isEmpty()) return ...;`로 가드하는 것과 같다. 리액트 컴포넌트도 그냥 함수라서 중간에 `return` 해도 된다.
-> (단, **훅 호출보다 위에서** return 하면 안 된다. 지금 코드는 훅이 전부 위에 있으므로 `find` 다음 위치가 맞다.)
-
-📖 [JS딥] 7장 연산자 — 논리 연산자 / 연산자 우선순위 부분 (절 번호 추정)
-📖 [한입리액트] 2장 > 단락 평가
+| # | 지적 | 처음 나온 차수 | 상태 |
+|---|---|---|---|
+| 1 | 없는 id로 들어가면 흰 화면 | 1차 | ✅ early return |
+| 2 | 삭제 후 `navigate` → `replace` | 1차 | ✅ |
+| 3 | `editingTodoId`를 레이아웃에 둠 → 로컬 `isEditing` | 1차 | ✅ |
+| 4 | 목록 `key` 위치 / `ul > li` 구조 | 1차 | ✅ 3차에 반영 |
+| 5 | `index` + `path="/"` 라우트 중복 | 1차 | ✅ 3차에 반영 |
+| 6 | `onClick={remove(todo.id)}` → 렌더링 중 삭제 | 2차 | ✅ 고침 → 그런데 **새 버그 발생 (🔴 A)** |
+| 7 | `setIsEditing(null)` → `false` | 2차 | ✅ |
+| 8 | 삭제 버튼을 눌러도 삭제가 안 됨 (🔴 A) | 3차 | ✅ 최종에 반영 — 매개변수 제거, `useParams`의 id 사용 |
+| 9 | 빈 값 등록 시 튕김 / `handleAddTodo` 반환값 (🟡 B) | 1차 | ✅ 최종에 반영 — `true/false` 반환 + 결과 확인 + `replace` |
+| 10 | `<Link>` 안 `<button>` (🟡 C) | 1차 | ✅ 최종에 반영 |
+| 11 | 주석·불필요한 체크 정리 (🟡 D) | 1차 | ✅ 최종에 반영 (빈 줄 몇 개만 남음, 무시해도 됨) |
 
 ---
 
-## 🔴 2. 삭제 후 뒤로가기하면 1번 버그로 직행
+## 🏁 최종 리뷰 (2026-11-08)
 
-**지적** — `src/DetailPage.jsx:13-16`
+### 코드
+- `eslint src` 통과. 1~3차 지적 11건 전부 해결됐고, **새로 생긴 버그는 없다.**
+- 특히 좋았던 점:
+  - 🔴 A를 **권장안(매개변수 제거)**으로 고쳤다. 화살표 함수로 감싸서 증상만 없애지 않고, "id가 어디서 오나"를 하나(`useParams`)로 정리한 것이 맞는 판단이다.
+  - `handleAddTodo`/`handleEditTodo`가 이제 **같은 규칙**(실패 `false`, 성공 `true`)을 따른다. 데이터 함수는 결과만 알려주고, 머무를지/이동할지는 페이지가 정하는 구조가 완성됐다.
+  - "추가"를 `<Link>`만으로 바꿨다. 모양보다 역할(이동)로 태그를 골랐다.
+- 사소한 것 (고치지 않아도 완료에 지장 없음): `AddPage.jsx:16-18`, `App.jsx:12-13`의 연속 빈 줄. `Outlet context`를 여러 줄로 쪼갠 들여쓰기(`App.jsx:42-45`)는 T6에서 `TodoLayout` 컴포넌트로 빼면서 정리하면 된다.
+
+### 💡 T6 이후에 알게 될 것 (지적 아님, 미리보기)
+- `setTodos([...todos, ...])`는 **지금 렌더링 시점의 `todos`**를 기준으로 새 배열을 만든다. 한 이벤트 안에서 두 번 연달아 호출하면 두 번째가 첫 번째 결과를 못 본다. `setTodos(prev => [...prev, ...])`(함수형 업데이트)는 항상 최신 값을 받는다. 지금 앱은 한 번씩만 호출해서 문제없지만, T7~T8에서 비동기 응답으로 state를 바꿀 때 이 차이가 버그로 드러난다. 📖 ⑪
+- 상세 페이지에 정상일 때 "목록으로" 링크가 없다 → T6 공통 헤더에서 해결.
+
+### 셀프 체크
+- **4번 ✅ 통과** — 세 가지 실행 시점을 모두 맞게 설명했다 (상세 피드백은 아래 셀프 체크 4번).
+- **1~3번 🔺** — 피드백은 남겼으니, T6 시작 전에 **모범 답안을 가리고** 자기 말로 한 번 다시 적어 보자. 특히 3번(`replace`가 바꾸는 건 데이터가 아니라 히스토리)은 T6 로그인 후 리다이렉트에서 바로 다시 쓴다.
+
+---
+
+## 👍 잘한 점
+- **상태 위치 판단**: `todos`는 레이아웃, `id`는 URL, `isEditing`은 페이지 로컬. 이번 과제 판단 포인트를 구조로 정확히 옮겼다.
+- **early return을 모든 훅 호출 아래에** 둔 것. 훅 규칙을 이해하고 적용했다.
+- **책임 분리**: `handleEditTodo`는 성공/실패만 돌려주고, 입력창을 닫을지는 페이지가 정한다. `navigate`도 데이터 함수가 아니라 페이지에 있다.
+- 리스트를 `<li key>` 안에 `<Link>`를 넣는 구조로 바로잡았고, 라우트도 상대 경로 + self-closing으로 깔끔해졌다.
+
+---
+
+# 🔧 3차 지적 (최종에서 모두 해결 — 기록용)
+
+## 🔴 A. 삭제 버튼을 눌러도 삭제가 안 된다
+
+**지적** — `src/DetailPage.jsx:20-23`, `:51`
 
 ```jsx
-function remove(id){
+function remove(id) {             // ← 매개변수 id
     handleDeleteTodo(id);
-    navigate('/');
+    navigate('/', {replace: true});
 }
+...
+<button onClick={remove}>
 ```
 
 **이유**
-- `navigate('/')`는 히스토리에 `/`를 **쌓는다(push).** 히스토리가 `/ → /todos/123 → /`가 되므로, 뒤로가기를 누르면 방금 지운 `/todos/123`으로 돌아간다.
-- 1번을 고치면 크래시는 안 나지만, 사용자 입장에선 "지웠는데 뒤로가기 하니까 '찾을 수 없음'"이 뜬다. 없어진 페이지는 히스토리에서도 **교체(replace)** 해 주는 게 자연스럽다.
-- AddPage도 같다. 등록 후 뒤로가기 하면 빈 등록 폼이 다시 나온다. 이건 취향 영역이지만, "등록 완료된 폼으로는 돌아갈 이유가 없다"면 replace가 맞다.
+- `onClick={remove}`로 넘긴 함수는, 클릭될 때 React가 **`remove(이벤트객체)`** 형태로 호출한다. 이벤트 핸들러의 첫 번째 인자는 항상 이벤트다.
+- 그래서 `remove` 안의 `id`는 todo id가 아니라 **클릭 이벤트 객체**가 된다. 매개변수 `id`가 바깥(`useParams`)의 `id`를 **가리고(shadowing)** 있어서 바깥 값은 쓰이지 않는다.
+- `handleDeleteTodo(이벤트객체)` → `todos.filter(todo => todo.id !== 이벤트객체)` → 모든 todo가 통과 → **아무것도 안 지워짐**. 그 뒤 `navigate`로 목록에 가니 사용자는 "삭제했는데 그대로 있네?"를 보게 된다.
+- 2차 리뷰에서 "덤: shadowing은 동작엔 문제 없지만 매개변수를 없애는 게 깔끔하다"고 했는데, `onClick={remove}`로 바뀌면서 **스타일 문제가 실제 버그로 바뀌었다.** 함수의 "받는 쪽(매개변수)"과 "넘기는 쪽(onClick)"은 항상 같이 맞춰야 한다.
+- 자바와 다른 점: JS는 매개변수 개수/타입을 검사하지 않는다. `remove(id)`에 이벤트 객체를 넣어도 에러 없이 실행된다. (TS로 넘어가면 `MouseEvent`를 `string` 자리에 넣는다고 컴파일 에러로 잡아준다 — TS 과제에서 체감하게 될 부분)
 
 **수정 사항 + 예제 코드**
 
 Before
 ```jsx
-handleDeleteTodo(id);
+function remove(id) {
+    handleDeleteTodo(id);
+    navigate('/', {replace: true});
+}
+<button onClick={remove}>삭제</button>
+```
+
+After (권장) — 매개변수를 없애고 `useParams`의 id를 그대로 쓴다
+```jsx
+function remove() {
+    handleDeleteTodo(id);
+    navigate('/', { replace: true });
+}
+<button onClick={remove}>삭제</button>
+```
+
+After (대안) — 매개변수를 유지하려면 넘기는 쪽에서 인자를 직접 지정
+```jsx
+<button onClick={() => remove(todo.id)}>삭제</button>
+```
+
+> 정리: `onClick`에 넘기는 3가지 형태
+> - `onClick={remove}` → 클릭 시 `remove(event)` 호출
+> - `onClick={() => remove(todo.id)}` → 클릭 시 `remove(todo.id)` 호출
+> - `onClick={remove(todo.id)}` → **렌더링할 때** 바로 호출 (2차 🔴 버그)
+
+📖 ①, ⑥
+
+---
+
+## 🟡 B. `handleAddTodo` 성공 시 반환값이 없고, AddPage가 결과를 안 본다
+
+**지적** — `src/App.jsx:18-26`, `src/AddPage.jsx:14-17`
+
+**이유**
+- 실패 시 `return false`는 추가됐는데, 성공 시에는 아무것도 반환하지 않는다(= `undefined`). `undefined`도 falsy라서 **성공과 실패를 구분할 수 없다.** 이 상태로 AddPage에 `if (!handleAddTodo(...)) return;`을 넣으면 **성공해도 페이지에 머무는** 반대 버그가 된다.
+- AddPage는 여전히 결과와 관계없이 `navigate('/')`를 한다 → 빈 값 제출 시 아무 말 없이 목록으로 튕긴다.
+- 등록이 끝난 폼으로 뒤로가기 할 이유가 없으므로 `replace: true`가 자연스럽다(아래 셀프 체크 3번 피드백 참고).
+- `handleEditTodo`는 `true/false`를 반환하는데 `handleAddTodo`만 다르면, 같은 레이아웃의 데이터 함수끼리 규칙이 달라진다.
+
+**수정 사항 + 예제 코드**
+
+Before
+```jsx
+// App.jsx
+function handleAddTodo(text) {
+    if (text.trim() === '') {
+        return false;
+    }
+    setTodos([...todos, { id: crypto.randomUUID(), text: text }]);
+}
+// AddPage.jsx
+handleAddTodo(todo);
 navigate('/');
 ```
 
 After
-```jsx
-handleDeleteTodo(id);
-navigate('/', { replace: true }); // 지운 상세 페이지를 히스토리에서 교체
-```
-
-> 판단 기준: "이 페이지로 **다시 돌아올 의미가 있나?**" → 없으면 `replace: true`. T6의 로그인 후 리다이렉트에서도 똑같이 쓰게 된다.
-
-📖 React Router 공식 문서 — `useNavigate`의 `replace` 옵션 (책에는 해당 내용이 얇음)
-📖 [한입리액트] 9장 > 리액트 라우터로 페이지 라우팅하기 — useNavigate 부분
-
----
-
-## 🟠 3. `editingTodoId`가 레이아웃(전역)에 있다 — 판단 포인트 직결
-
-**지적** — `src/App.jsx:8`, `:46`, `:56` / `src/DetailPage.jsx:4-6`
-
-**이유**
-- 이번 과제의 판단 포인트가 "**레이아웃에 둘 상태 / URL에 둘 상태 / 메모리(로컬)에 둘 상태**를 구분"이다. 하나씩 따져 보면:
-  - `todos` → 목록·추가·상세 **세 페이지가 다 쓴다** → 레이아웃 ✅
-  - `id` → 새로고침·링크 공유해도 유지돼야 한다 → URL(`/todos/:id`) ✅
-  - `editingTodoId` → **상세 페이지 하나만** 쓴다, 그리고 페이지를 떠나면 의미가 없다 → 상세 페이지 로컬 state가 맞다 ❌
-- 지금 구조에서 생기는 실제 문제:
-  - 상세에서 "수정"을 눌러 입력창을 연 상태로 브라우저 뒤로가기 → 다시 같은 항목에 들어오면 **입력창이 열린 채로** 나온다(state가 레이아웃에 남아 있어서).
-  - `handleEditTodo`(데이터 변경 함수)가 `setEditingTodoId(null)`(화면 상태)까지 건드린다. 2번에서 `navigate`를 페이지로 옮긴 것과 같은 이유로, 이것도 페이지가 할 일이다.
-- 그리고 상세 페이지는 한 번에 todo 하나만 보이므로 "**어떤 id**를 편집 중인가"를 저장할 필요도 없다. `isEditing` boolean이면 충분하다.
-
-**수정 사항 + 예제 코드**
-
-Before (App.jsx)
-```jsx
-const [editingTodoId, setEditingTodoId] = useState(null);
-...
-function handleEditTodo(id, text) {
-    ...
-    setTodos(...);
-    setEditingTodoId(null);
-}
-...
-<Outlet context={{ todos, handleAddTodo, handleEditTodo, handleDeleteTodo, editingTodoId, setEditingTodoId }} />
-```
-
-After (App.jsx) — 데이터만 다룬다
-```jsx
-function handleEditTodo(id, text) {
-    if (text.trim() === '') return false;
-    setTodos(todos.map(todo => todo.id === id ? { ...todo, text } : todo));
-    return true;
-}
-...
-<Outlet context={{ todos, handleAddTodo, handleEditTodo, handleDeleteTodo }} />
-```
-
-After (DetailPage.jsx) — 화면 상태는 페이지가 소유
-```jsx
-const { todos, handleEditTodo, handleDeleteTodo } = useOutletContext();
-const { id } = useParams();
-const navigate = useNavigate();
-const [isEditing, setIsEditing] = useState(false);
-
-const todo = todos.find((x) => x.id === id);
-if (!todo) { /* 1번의 early return */ }
-
-function handleKeyDown(e) {
-    if (e.key === 'Enter') {
-        if (handleEditTodo(id, e.currentTarget.value)) setIsEditing(false);
-    } else if (e.key === 'Escape') {
-        setIsEditing(false);
-    }
-}
-
-return (
-    <>
-        {isEditing ? (
-            <input
-                autoFocus
-                defaultValue={todo.text}
-                onBlur={() => setIsEditing(false)}
-                onKeyDown={handleKeyDown}
-            />
-        ) : (
-            <>
-                <span>{todo.text}</span>
-                <button onClick={() => setIsEditing(true)}>수정</button>
-            </>
-        )}
-        <button onClick={remove}>삭제</button>
-    </>
-);
-```
-
-덤으로 바뀐 것들:
-- `A && ...` / `!A && ...` 두 블록 → 삼항 하나. 조건이 정확히 둘로 갈릴 땐 삼항이 "둘 중 하나"라는 의도를 더 잘 드러낸다.
-- `handleEditTodo`의 `text === null` 체크 제거. `input.value`는 항상 문자열이라 null이 들어올 수 없다.
-- `autoFocus` — "수정"을 누르면 바로 타이핑 가능. 지금은 입력창이 떠도 포커스가 없어서, 한 번 클릭해야 하고 그 전엔 `onBlur`도 안 걸린다.
-- `remove`는 `id`를 인자로 받을 필요 없이 `useParams`의 `id`를 바로 쓰면 된다.
-
-📖 [리액트딥] 5.1 상태 관리는 왜 필요한가? — 상태를 어디에 둘지의 기준
-📖 [한입리액트] 5장 > 컴포넌트와 상태
-
----
-
-## 🟠 4. `key`가 엉뚱한 요소에 붙어 있고, `<ul>` 바로 아래에 `<a>`가 있다
-
-**지적** — `src/ListPage.jsx:16-17`
-
-```jsx
-{todos.map(todo => (
-    <Link to={`/todos/${todo.id}`}>
-        <li key={todo.id}>{todo.text}</li>
-    </Link>
-))}
-```
-
-**이유**
-- `key`는 **`map`이 돌려주는 가장 바깥 요소**에 붙여야 한다. React는 형제끼리 key를 비교하는데, 지금 형제는 `<Link>`들이고 `<li>`는 각 Link의 외동 자식이다. 그래서 key가 없는 것과 같다 → 콘솔에 `Each child in a list should have a unique "key" prop` 경고가 뜬다(ESLint 설정에 이 규칙이 없어서 lint는 통과).
-  - key가 없으면 항목 삭제/순서 변경 시 React가 인덱스로 매칭해서, 나중에 항목에 체크박스·입력창 같은 상태가 생기면 **엉뚱한 항목에 상태가 붙는 버그**로 이어진다.
-- `<ul>`의 자식은 `<li>`만 허용된다. `<Link>`는 `<a>`로 렌더링되므로 HTML 규칙 위반이고, 스크린리더가 "목록, 항목 N개"를 제대로 읽지 못한다.
-
-**수정 사항 + 예제 코드**
-
-After
-```jsx
-<ul>
-    {todos.map(todo => (
-        <li key={todo.id}>
-            <Link to={`/todos/${todo.id}`}>{todo.text}</Link>
-        </li>
-    ))}
-</ul>
-```
-
-> 순서 기억법: **목록 구조(ul > li)가 먼저, 링크는 그 안의 내용물.**
-
-📖 [리액트딥] 2.2 가상 DOM과 리액트 파이버 — key가 재조정에서 하는 일
-📖 [한입리액트] 6장 > Project 2 [할 일 관리] 앱 — 리스트 렌더링(Read) 부분
-
----
-
-## 🟡 5. `<Link>` 안에 `<button>`
-
-**지적** — `src/ListPage.jsx:8-12`
-
-**이유**
-- `<a>` 안에 `<button>`처럼 **클릭 가능한 요소를 중첩**하는 건 HTML 규칙 위반이다. 키보드 Tab 시 포커스가 두 번 잡히고, 스크린리더는 "링크, 버튼"을 둘 다 읽는다.
-- 원칙: **주소가 바뀌면 `<Link>`, 같은 페이지에서 동작만 하면 `<button>`.** "추가"는 `/new`로 이동하므로 Link 하나면 된다. 버튼처럼 보이게 하고 싶으면 CSS로 처리.
-
-**수정 사항 + 예제 코드**
-
-Before
-```jsx
-<Link to="/new"><button>추가</button></Link>
-```
-
-After
-```jsx
-<Link to="/new" className="button">추가</Link>
-```
-
-📖 [한입리액트] 9장 > 리액트 라우터로 페이지 라우팅하기 — Link vs useNavigate 비교 부분
-📖 (접근성은 책보다 MDN `<a>` / `<button>` 문서가 정확함)
-
----
-
-## 🟡 6. `index` 라우트와 `path="/"` 라우트가 중복
-
-**지적** — `src/App.jsx:57-60`
-
-**이유**
-- 부모 레이아웃 라우트에 `path`가 없으므로 `index` 라우트가 곧 `/`다. `path="/"`를 또 쓰면 **같은 URL에 라우트가 두 개**가 된다. 지금은 우연히 같은 컴포넌트라 티가 안 나지만, 한쪽만 고치면 "왜 안 바뀌지?"가 된다.
-- 자식이 없는 `<Route>`는 self-closing으로, 문자열 prop은 `{"..."}` 없이 쓰면 읽기 쉽다.
-
-**수정 사항 + 예제 코드**
-
-After
-```jsx
-<Routes>
-    <Route element={<Outlet context={{ todos, handleAddTodo, handleEditTodo, handleDeleteTodo }} />}>
-        <Route index element={<ListPage />} />
-        <Route path="new" element={<AddPage />} />
-        <Route path="todos/:id" element={<DetailPage />} />
-    </Route>
-</Routes>
-```
-
-> 중첩 라우트의 자식 path는 앞에 `/` 없이 **상대 경로**로 쓰는 게 관례다. T6에서 레이아웃이 `/todos` 같은 path를 갖게 되면 차이가 드러난다.
-> 그리고 T6에서 공통 헤더를 붙일 때는 `element={<Outlet .../>}`를 `TodoLayout` 컴포넌트로 빼게 될 것이다. 지금 미리 빼 둬도 좋다.
-
-📖 [한입리액트] 9장 > 리액트 라우터로 동적 경로 라우팅하기
-📖 React Router 공식 문서 — Routing > Index Routes / Layout Routes
-
----
-
-## 🟡 7. 빈 값으로 등록하면 아무 말 없이 목록으로 튕김
-
-**지적** — `src/AddPage.jsx:14-17`
-
-**이유**
-- 빈 값이면 `handleAddTodo` 안에서 `return` 되지만, AddPage는 그걸 모르고 `navigate('/')`를 실행한다. 사용자는 "등록됐나?" 하고 목록을 봐야 실패를 안다.
-- 검증 결과를 **호출한 쪽이 알 수 있어야** 다음 동작(이동 / 머무르기)을 고를 수 있다.
-
-**수정 사항 + 예제 코드**
-
-After
-```jsx
-const handleSubmit = (e) => {
-    e.preventDefault();
-    const text = new FormData(e.currentTarget).get('addInput');
-
-    if (!handleAddTodo(text)) return;   // 실패하면 페이지에 머무름 (3번처럼 boolean 반환)
-    navigate('/', { replace: true });
-};
-```
 ```jsx
 // App.jsx
 function handleAddTodo(text) {
@@ -312,84 +145,196 @@ function handleAddTodo(text) {
     setTodos([...todos, { id: crypto.randomUUID(), text }]);
     return true;
 }
+// AddPage.jsx
+if (!handleAddTodo(todo)) return;     // 실패하면 폼에 머무름
+navigate('/', { replace: true });
 ```
 
-> 더 간단하게는 `<input required />`만 붙여도 브라우저가 빈 제출을 막아준다(공백만 입력은 못 막음). sign-up 과제의 검증 로직을 재사용해 보는 것도 방법.
-> 사소한 것: `// 1.`, `// 4.` 주석은 이전 코드(2·3번 단계)의 흔적이라 번호가 비어 있다. 정리하자.
+> 더 간단하게는 `<input required />`만 붙여도 브라우저가 빈 제출을 막아준다(공백만 입력은 못 막으므로 trim 검사는 유지).
 
-📖 [JS딥] 40장 이벤트 — preventDefault / 폼 submit 부분
-📖 [한입리액트] 5장 > 이벤트 처리하기
+📖 ⑤, ⑨
 
 ---
 
-## 💬 TODO 질문 답변: `value={todo.text}`일 때 콘솔 경고가 뜬 이유 (`DetailPage.jsx:35`)
+## 🟡 C. "추가" 버튼이 아직 `<Link>` 안의 `<button>`
 
-"가변 설계가 필요해서?" → 방향은 맞다. 정확히는 **제어(controlled) vs 비제어(uncontrolled) 입력** 문제다.
+**지적** — `src/ListPage.jsx:8-12`
 
-- `value`를 주면 React가 **"이 입력창의 값은 내가 책임진다"(제어 컴포넌트)** 로 받아들인다. 그런데 `onChange`가 없으면 값을 바꿀 방법이 없으므로 키보드를 쳐도 글자가 안 바뀐다. 그래서 React가 경고한다:
-  `You provided a 'value' prop to a form field without an 'onChange' handler...`
-- 해결은 두 가지 중 **선택**:
-  1. 비제어: `defaultValue={todo.text}` — 초기값만 넣고 이후는 DOM이 관리. 값은 이벤트에서 `e.currentTarget.value`로 읽는다. **지금 코드가 이 방식이고, 이 화면에선 이게 맞다.**
-  2. 제어: `value={draft}` + `onChange={e => setDraft(e.target.value)}` — 입력마다 state가 갱신. 입력 중에 글자 수 표시, 실시간 검증 같은 게 필요할 때 선택.
-- 판단 기준: **"입력하는 도중에 그 값을 화면/로직이 알아야 하나?"** → 예면 제어, 아니면(제출/엔터 시점에만 필요) 비제어.
-- 주의: `defaultValue`는 **마운트될 때 한 번만** 적용된다. 같은 입력창이 그대로 있는 채로 `todo`만 바뀌면 값이 안 따라온다. (지금은 수정 모드 진입 때마다 새로 마운트되므로 문제 없음)
+**이유**
+- 목록 항목은 고쳤는데 "추가"는 그대로다. `<a>` 안에 `<button>`은 클릭 가능한 요소 중첩이라 HTML 규칙 위반이고, Tab 키 포커스가 두 번 잡히며 스크린리더가 "링크, 버튼"을 둘 다 읽는다.
+- 원칙: **주소가 바뀌면 `<Link>`, 같은 페이지에서 동작만 하면 `<button>`.** 모양은 CSS로 맞춘다.
 
-📖 [한입리액트] 5장 > 사용자 입력 처리하기 (색인에 없음, 목차 기준 추정)
-📖 [리액트딥] 3.1 리액트의 모든 훅 파헤치기 — useRef 부분(비제어 입력을 ref로 읽는 방식과 연결)
+**수정 사항 + 예제 코드**
+
+Before
+```jsx
+<Link to="/new">
+<button>
+    추가
+</button>
+</Link>
+```
+
+After
+```jsx
+<Link to="/new" className="button">추가</Link>
+```
+```css
+/* index.css */
+.button {
+    display: inline-block;
+    padding: 6px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    text-decoration: none;
+    color: inherit;
+}
+```
+
+📖 ③ (접근성 규칙은 MDN `<a>` / `<button>` 문서가 정확함)
 
 ---
 
-## 🧹 저장소 정리 (리뷰 범위 밖, 참고)
-- 루트 `node_modules/`가 git에 커밋돼 있었다(지금 working tree에서 삭제됨, 262개 파일). 루트에 `.gitignore`를 만들고 `node_modules/`를 넣은 뒤 삭제를 커밋하자.
-- HEAD 커밋(`31d02ca`)은 리뷰한 버전보다 이전 상태다. 지금 staged 변경을 커밋해 두면 리뷰 기준점이 명확해진다.
+## 🟡 D. 정리할 것들
+
+**지적** — `src/App.jsx:33`, `src/AddPage.jsx:8, 16, 19-21`
+
+**이유**
+- `text === null` 체크: `input.value`는 항상 문자열이라 null이 들어올 수 없다. 없는 경우를 검사하면 읽는 사람이 "null이 오는 경로가 있나?" 하고 찾게 된다.
+- `// 1.`, `// 4.` 번호 주석은 예전 코드의 흔적이라 번호가 비어 있다. 빈 줄 3개도 정리.
+
+**수정 사항 + 예제 코드**
+
+Before
+```jsx
+if (text === null || text.trim() === '') {
+    return false;
+}
+```
+
+After
+```jsx
+if (text.trim() === '') return false;
+```
+
+📖 ⑤
 
 ---
 
-## ✅ 판단 포인트 셀프 체크 (말로 설명해 보기)
-1. `todos`를 각 페이지가 아니라 레이아웃에 두고 `Outlet context`로 내리는 이유는? 페이지마다 `useState(todos)`를 따로 두면 무슨 일이 생기나?
-2. `id`는 URL에, `isEditing`은 로컬 state에 두는 이유는? (힌트: 새로고침/링크 공유/뒤로가기 때 살아남아야 하는가)
-3. `navigate('/')`와 `navigate('/', { replace: true })`를 각각 언제 쓰나?
+# ✅ 판단 포인트 셀프 체크 + 답변 피드백
 
-→ 3번 지적을 반영하고 위 1~2를 막힘없이 설명할 수 있으면 T5 완료.
+## 1. `todos`를 레이아웃에 두고 `Outlet context`로 내리는 이유는? 페이지마다 `useState(todos)`를 따로 두면 무슨 일이 생기나?
 
-## 📚 이번 과제 복습 읽기 (우선순위 순)
-1. [한입리액트] 9장 > 리액트 라우터로 페이지 라우팅하기 / 리액트 라우터로 동적 경로 라우팅하기 — Link·useNavigate·useParams 사용법 재확인 (2·5·6번)
-2. [한입리액트] 2장 > 단락 평가 + [JS딥] 7장 연산자(우선순위) — JSX 조건부 렌더링에서 `&&`/`||`가 어떻게 평가되는지 (1번)
-3. [리액트딥] 2.2 가상 DOM과 리액트 파이버 — key가 왜 형제 레벨에 있어야 하는지 (4번)
+> 각 페이지마다 상태를 개별로 관리하는 것보다는 어떤 상태를 관리해야하는지, 또 공통으로 관리하는 요소에 있어서는 코드의 중복과 상태 관리의 복잡성을 줄이기 위해 전역으로 관리하는 것이 더 효율적이라서.
 
----
+**💬 피드백 — 핵심 이유가 빠졌음 (🔺)**
 
-## ❓ 후속 질문 정리 (2026-10-11)
+- 🔺 "중복과 복잡성을 줄여서 **효율적**"은 부가 효과다. 진짜 이유는 효율이 아니라 **정확성**이다. 페이지마다 따로 두면 **아예 동작하지 않는다.**
+  - **데이터가 공유되지 않는다**: AddPage의 `useState(todos)`와 ListPage의 `useState(todos)`는 이름만 같은 **서로 다른 변수**다. AddPage에서 추가해도 ListPage의 todos는 그대로다. (localStorage에서 다시 읽게 만들면 되지 않냐? → 그러면 저장소 하나에 사본이 여러 개 생기고, 언제 다시 읽을지 동기화를 직접 맞춰야 한다.)
+  - **페이지를 떠나면 사라진다**: 라우트가 바뀌면 이전 페이지 컴포넌트는 **언마운트**되고, 그 안의 state도 같이 사라진다. 레이아웃(App)은 페이지가 바뀌어도 계속 마운트돼 있어서 state가 살아남는다.
+  - 결론: 여러 페이지가 **같은 데이터를 봐야** 하므로, 그 페이지들의 **공통 부모 중 계속 살아 있는 곳**(레이아웃)에 **원본 하나**를 두고 내려준다. 백엔드로 치면 각 API가 DB 사본을 따로 들고 있지 않고 DB 하나를 공유하는 것.
+- 🔺 용어: 지금 구조는 "전역"이 아니라 **레이아웃 범위(그 아래 자식 라우트만 공유)**다. `Outlet context`는 그 레이아웃 바로 아래 라우트에서만 꺼낼 수 있다. 앱 어디서든 쓰는 진짜 전역은 Context API나 Zustand(토픽 5)이고, 이 차이가 "상태를 어디에 둘지" 판단의 핵심이 된다.
 
-**Q1. `todo === undefined || todo === null && <span/>`에서 todo가 없으면 왜 아무것도 안 그려지나?**
-- `&&`가 먼저 묶여서 `A || (B && <span/>)`가 된다.
-- todo가 없으면 A가 `true` → `||`는 왼쪽이 truthy면 **오른쪽을 보지도 않고 왼쪽 값(`true`)을 그대로 반환**한다.
-- React는 `true`, `false`, `null`, `undefined`를 아무것도 그리지 않는다. → `<span>`은 todo가 있어도 없어도 절대 안 나온다.
+**모범 답안 예시**
+> 목록·추가·상세 세 페이지가 같은 todos를 봐야 한다. 페이지마다 state를 두면 서로 다른 사본이라 추가한 내용이 목록에 안 보이고, 라우트가 바뀌면 페이지가 언마운트되면서 state도 사라진다. 그래서 페이지가 바뀌어도 계속 살아 있는 공통 부모(레이아웃)에 원본 하나를 두고 `Outlet context`로 내려준다.
 
-**Q2. "객체는 truthy"란?**
-- JS는 `if`, `!`, `&&`, `||` 자리에 boolean이 아닌 값도 넣을 수 있고, 그때 true/false로 취급(변환)한다.
-- falsy(거짓 취급)는 딱 8개: `false`, `0`, `-0`, `0n`, `""`, `null`, `undefined`, `NaN`. 나머지는 전부 truthy — **빈 객체 `{}`, 빈 배열 `[]`도 truthy**.
-- 그래서 `find` 결과가 객체 또는 `undefined`뿐이면 `!todo`로 안전하게 "없음"을 판별할 수 있다.
-- 주의: 숫자 배열에서 `find`가 `0`을 찾았다면 `!0 === true`라 "없음"으로 오판한다. 그땐 `=== undefined`로 비교.
+## 2. `id`는 URL에, `isEditing`은 로컬 state에 두는 이유는?
 
-**Q3. "JSX 안의 `&&`는 아래쪽 JSX가 여전히 평가된다"란?**
-- JSX는 결국 함수 호출(값 만들기)이다. return 안의 `{...}`들은 **배열 원소처럼 위에서부터 전부 계산된 뒤** React에 넘어간다.
-  ```js
-  return jsx(Fragment, { children: [
-      식1,                              // todo === undefined || ...
-      editingTodoId !== todo.id && ..., // 식2 — 식1 결과와 상관없이 계산됨 → todo.id에서 TypeError
-  ]});
+> id는 목록에서 물고 들어가야하는 정보이고 이걸 기준으로 todo에서 정보를 찾아서 상세에서 활용해야하고, Link로 정보를 활요할 필요도 있기에 url로 활용. 또한 뒤로가기나 링크 공유 때는 살아있어야하니 url로 활용하면 딱 좋다.
+> 하지만 변화한다거나 상태 관리 대상은 아님. isEditing은 상태 관리의 대상이라 stat로 관리하지만 해당 페이지안에서만 유효하기에 local로 관리. 전역의 필요가 없음
+> 또한 새로 고침에서도 살아남아야하고, 뒤로가기나 링크 공유때는 필요없으니 로컬 상태로 관리가 적격이다.
+
+**💬 피드백 — 방향은 맞음, 2군데 수정 필요 (🔺)**
+
+- ✅ **맞은 부분**: id를 URL에 두는 핵심 근거 "뒤로가기·링크 공유 때 살아있어야 한다"를 정확히 짚었다. `isEditing`이 "그 페이지 안에서만 유효하니 로컬"이라는 판단도 맞다.
+- ❌ **"isEditing은 새로고침에서도 살아남아야 하고"** → **반대다.** `useState`는 메모리에만 있어서 새로고침하면 **사라진다.** 그리고 그게 원하는 동작이다. 새로고침했는데 수정 입력창이 열린 채로 나오면 오히려 이상하다. 새로고침에 살아남는 건 URL(`id`)과 localStorage(`todos`)뿐이다.
+  - 그래서 이 답의 핵심 기준은 한 줄로 정리된다: **"새로고침 / 링크 공유 / 뒤로가기 후에도 이 값이 유지돼야 하나?" → 예: URL, 아니오: 로컬 state**
+- 🔺 **"id는 변화하거나 상태 관리 대상은 아님"** → 절반만 맞다. id도 **바뀐다**(다른 항목 클릭 → `/todos/abc` → `/todos/xyz`). 바뀌면 `useParams`가 새 값을 주면서 DetailPage가 다시 렌더링된다. 즉 **URL도 상태다. 다만 주인이 React(`useState`)가 아니라 브라우저 주소창이다.** "내가 `setState`로 직접 관리하지 않는 상태"라고 표현하면 정확하다. 이 관점은 T8에서 검색어/페이지를 `useSearchParams`로 URL에 둘 때 그대로 쓰인다.
+
+**모범 답안 예시**
+> `id`는 새로고침·링크 공유·뒤로가기 후에도 같은 항목을 보여줘야 하므로 URL에 둔다(URL도 상태이며, 주인이 브라우저다). `isEditing`은 상세 페이지에서만 쓰고, 새로고침하거나 페이지를 떠나면 **사라지는 게 맞는** 값이라 페이지 로컬 state에 둔다.
+
+## 3. `navigate('/')`와 `navigate('/', { replace: true })`를 각각 언제 쓰나?
+
+> 삭제하고나서 삭제된 정보로 새롭게 대체를 데이터를 해줘야만 할때 replace를 쓴다. 그렇지 않다면 갱신되지 않은 정보로 다시 상세 보기를 한다면 정보 없음 등의 정보가 뜰 수 있다.
+
+**💬 피드백 — 결과는 알고 있는데, `replace`가 "무엇을" 대체하는지가 틀림 (🔺)**
+
+- ❌ `replace`는 **데이터**를 대체하는 게 아니라 **브라우저 히스토리(방문 기록)의 현재 칸**을 대체한다. 데이터는 `handleDeleteTodo`가 이미 지웠고, `navigate`는 데이터에 아무 영향도 주지 않는다.
   ```
-- `&&`는 **자기 오른쪽만** 건너뛸 수 있다. 형제 `{}`의 실행은 막지 못한다. 함수 실행 자체를 끝내려면 `return`이 필요하다.
+  push (기본):    [ / ] → [ /todos/1 ] → [ / ]        뒤로가기 → /todos/1 (지운 항목, "찾을 수 없음")
+  replace: true:  [ / ] → [ /todos/1 를 / 로 덮어씀 ]  뒤로가기 → 그 이전 페이지
+  ```
+- ✅ 두 번째 문장 "안 쓰면 뒤로가기로 다시 상세에 가서 '정보 없음'이 뜬다"는 **결과는 정확히** 짚었다. 원인 설명만 "데이터" → "히스토리"로 바꾸면 된다.
+- 판단 기준을 "삭제할 때"로 외우면 다른 상황에 못 쓴다. 일반화하면: **"지금 페이지로 뒤로가기해서 돌아올 의미가 있나?"**
+  - 없음 → `replace: true`: 삭제한 상세 페이지, 등록 완료한 폼(🟡 B), 로그인 성공 후 로그인 페이지(T6)
+  - 있음 → 기본(push): 목록 → 상세처럼 평범한 이동
 
-**Q4. early return은 useEffect처럼 첫 로드 때 자동으로 실행되나?**
-- useEffect와는 다른 개념이다. **컴포넌트 함수 본문은 렌더링할 때마다 위에서 아래로 그대로 실행되는 평범한 코드**다.
-  - 렌더링 시점: 처음 마운트될 때 + state/props/context(여기선 Outlet context의 todos)가 바뀔 때마다.
-  - 그러니 `if (!todo) return ...`은 첫 로드는 물론, 나중에 todos가 바뀌어 다시 렌더링될 때마다 매번 다시 검사된다.
-- useEffect는 "화면을 그린 **뒤에** 실행할 부수 효과(localStorage 저장, 타이머, 구독)"를 예약하는 것. 본문은 "**무엇을 그릴지 계산**"하는 곳.
-  - 비유: 본문 = 컨트롤러 메서드가 응답을 만드는 로직, useEffect = 응답 보낸 뒤 실행되는 후처리 리스너.
-- 규칙: early return은 **모든 훅 호출보다 아래**에 둔다. React는 훅을 "호출 순서"로 기억하는데, return 아래에 훅이 있으면 렌더링마다 훅 개수가 달라져 `Rendered fewer hooks than expected` 에러가 난다.
+**모범 답안 예시**
+> 기본 `navigate`는 히스토리에 새 칸을 쌓고(push), `replace: true`는 현재 칸을 덮어쓴다. 지금 페이지가 뒤로가기로 돌아와도 의미 없는 페이지(삭제된 항목의 상세, 제출 끝난 폼, 로그인 완료 후 로그인 페이지)면 `replace`를 쓴다.
 
-📖 [JS딥] 9장 타입 변환과 단락 평가 — truthy/falsy, 단락 평가 부분
-📖 [리액트딥] 2.4 렌더링은 어떻게 일어나는가? — 함수 본문이 렌더링마다 실행된다는 것
-📖 [리액트딥] 3.1 리액트의 모든 훅 파헤치기 — 훅의 규칙 부분
+## 4. `onClick={remove}`, `onClick={() => remove(id)}`, `onClick={remove(id)}` 셋의 차이를 "언제 실행되는가"로 설명하기
+
+> 세번째는 렌더링될 떄 실행되므로 상세 진입시 매번 삭제가 되어 데이터가 매번 없는 상태가 반복된다 
+> 첫번째는 실행 시점은 버튼 클릭이지만 이벤트 핸들러가 넘어가기에 의도한 매개변수가 넘어가지 않아 동작하지 않는다. 첫번째로 할거면 함수 안에서 useParams로 가져온 id를 활용해도된다. 
+> 두번쨰는 만약 넘거야할 파라미터를 실행 시점에 전달해야한다면 선택 가능한 방법. 
+
+**💬 피드백 — 통과 ✅ (표현 2군데만 다듬기)**
+
+- ✅ 세 번째: 렌더링할 때 실행 → 상세에 들어가는 순간 삭제. 정확하다.
+- ✅ 두 번째: 클릭할 때, **내가 정한 인자**로 호출. "넘길 값을 직접 정해야 할 때 쓰는 방법"이라는 판단도 맞다. (예: 목록에서 항목마다 삭제 버튼 → `() => remove(todo.id)`)
+- 🔺 첫 번째: "**이벤트 핸들러가** 넘어가기에" → 정확히는 "**이벤트 객체가** 첫 번째 인자로 넘어가기에". 핸들러는 `remove` 자신이고, React가 그 핸들러를 호출하면서 넣어 주는 게 이벤트 객체다.
+- 🔺 첫 번째가 "동작하지 않는다"는 건 **`remove`가 매개변수를 받을 때만**이다. 지금처럼 매개변수 없는 `remove()`라면 첫 번째가 가장 흔하고 권장되는 형태다. 즉 "첫 번째는 잘못된 방식"이 아니라 "**받는 쪽 매개변수와 맞춰야 한다**"가 결론.
+
+**모범 답안 예시**
+> - `onClick={remove}`: 클릭할 때 React가 `remove(event)`로 호출한다. 매개변수가 없는 함수면 이게 기본형이고, 매개변수가 있으면 그 자리에 이벤트 객체가 들어간다.
+> - `onClick={() => remove(todo.id)}`: 클릭할 때 화살표 함수가 실행되고, 그 안에서 내가 정한 인자로 `remove`를 호출한다.
+> - `onClick={remove(todo.id)}`: 렌더링할 때 바로 실행되고, 그 반환값(`undefined`)이 onClick에 들어간다. 클릭해도 아무 일 없고, 렌더링마다 부수 효과가 일어난다.
+
+→ **T5 완료.** 남은 건 셀프 체크 1~3번을 모범 답안을 가리고 다시 적어 보기 (T6 시작 전).
+
+---
+
+# 🗂 해결된 지적 요약 (다시 볼 때 핵심만)
+
+| 지적 | 무엇이 문제였나 | 기억할 교훈 |
+|---|---|---|
+| 없는 id → 흰 화면 | `A \|\| B && <span/>`에서 `&&`가 먼저 묶여 "찾을 수 없음"이 안 나옴 + 아래 JSX의 `todo.id`에서 TypeError | JSX 안의 `&&`는 **자기 오른쪽만** 건너뛴다. 아래 코드 실행을 막으려면 **early return** (단, 모든 훅 호출 아래에서) |
+| `navigate('/')` → replace | 삭제 후 뒤로가기하면 지운 항목 상세로 돌아감 | 셀프 체크 3번 참고 |
+| `editingTodoId`를 레이아웃에 | 한 페이지만 쓰는 화면 상태를 레이아웃에 둠 → 뒤로갔다 오면 입력창이 열린 채로 남음 | 상태는 **쓰는 곳 중 가장 가까운 곳**에. 한 페이지만 쓰면 그 페이지 로컬 |
+| `key` 위치 / `ul > li` | key가 `<Link>`의 자식 `<li>`에 붙어 무효 | key는 **`map`이 돌려주는 가장 바깥 요소**에. 없으면 React가 인덱스로 짝지어 나중에 상태가 엉뚱한 항목에 붙음 |
+| `index` + `path="/"` 중복 | 같은 URL에 라우트 두 개 | 레이아웃 아래 자식 path는 `/` 없이 상대 경로, `/`는 `index` 하나로 |
+| `onClick={remove(todo.id)}` | 렌더링 중에 삭제 실행 → 상세에 들어가면 바로 지워짐 | 이벤트 prop엔 **"나중에 호출될 함수"**를 넘긴다. `함수이름(...)`이 보이면 의심 |
+| `setIsEditing(null)` | boolean state에 null 혼입 | 한 state/반환값은 한 가지 타입으로 (TS 전환 대비) |
+
+## 💬 그동안의 질문 답변 요약
+
+- **`value={todo.text}`일 때 콘솔 경고가 뜬 이유?** → `value`를 주면 React가 값을 책임지는 **제어 컴포넌트**가 되는데, `onChange`가 없어 바꿀 방법이 없으니 경고. 입력 도중의 값이 필요 없고 Enter 시점에만 읽으면 되므로 **`defaultValue`(비제어)**가 맞다. 기준: "입력 도중에 그 값을 화면/로직이 알아야 하나?" 예 → 제어, 아니오 → 비제어. (`defaultValue`는 마운트 때 한 번만 적용된다는 점 주의)
+- **`todo === undefined || todo === null && <span/>`에서 왜 아무것도 안 그려지나?** → `&&`가 먼저 묶여 `A || (B && <span/>)`. todo가 없으면 `true`가 반환되고, React는 `true/false/null/undefined`를 그리지 않는다.
+- **"객체는 truthy"란?** → falsy는 `false, 0, -0, 0n, "", null, undefined, NaN` 8개뿐. `{}`, `[]`도 truthy. 그래서 `find` 결과는 `!todo`로 안전하게 "없음" 판별 가능 (숫자 배열에서 `0`을 찾는 경우만 예외).
+- **early return은 useEffect처럼 첫 로드 때만 실행되나?** → 아니다. 컴포넌트 함수 본문은 **렌더링할 때마다** 위에서 아래로 실행되는 평범한 코드다. useEffect는 "그린 **뒤에** 실행할 부수 효과" 예약. 비유: 본문 = 컨트롤러가 응답을 만드는 로직, useEffect = 응답 후 후처리 리스너. 훅은 호출 순서로 기억되므로 early return은 모든 훅 아래에.
+- **key를 안 주면 문제 없나?** → 지금 텍스트만 보이는 목록에선 티가 안 나지만, 삭제 시 뒤 항목들이 전부 다시 그려지고, 항목에 체크박스·입력창 같은 상태가 생기면 **옆 항목으로 밀려 붙는** 버그가 된다. "안 보인다 ≠ 없다".
+
+---
+
+# 📚 책 읽기 통합 목록
+
+본문 📖 번호가 가리키는 곳. **⭐ = 이번 과제 마무리 전에 꼭 읽을 것** (위에서부터 우선순위 순)
+
+| 번호 | 책 / 위치 | 무엇을 보면 되나 | 관련 지적 |
+|---|---|---|---|
+| ⭐ ① | [한입리액트] 5장 > 이벤트 처리하기 | 이벤트 핸들러를 "전달"하는 것과 "호출"하는 것의 차이, 핸들러가 **이벤트 객체를 첫 인자로** 받는다는 것 | 🔴 A, 셀프 체크 4 |
+| ⭐ ② | [리액트딥] 5.1 상태 관리는 왜 필요한가? | 여러 컴포넌트가 같은 데이터를 봐야 할 때 상태를 어디에 둘지의 기준 | 셀프 체크 1·2, `editingTodoId` |
+| ⭐ ③ | [한입리액트] 9장 > 리액트 라우터로 페이지 라우팅하기 / 리액트 라우터로 동적 경로 라우팅하기 | `Link` vs `useNavigate`, `useParams`, 라우트 구성 | 🟡 C, replace, 라우트 중복, 셀프 체크 2·3 |
+| ④ | [리액트딥] 2.4 렌더링은 어떻게 일어나는가? | 컴포넌트 본문이 렌더링마다 실행된다는 것, 렌더링 중에 state 변경·이동 같은 부수 효과를 일으키면 안 되는 이유 | 2차 `remove(todo.id)` 버그, early return 질문 |
+| ⑤ | [한입리액트] 2장 > truthy & falsy / 단락 평가 + [JS딥] 9장 타입 변환과 단락 평가 | `undefined`/`false`/`null`이 조건식에서 어떻게 취급되는지, `&&`/`\|\|` 평가 순서 (연산자 우선순위는 [JS딥] 7장 연산자 — 절 번호 추정) | 🟡 B·D, 1차 흰 화면 버그 |
+| ⑥ | [JS딥] 13장 스코프 — 스코프 체인 / 같은 이름 변수가 바깥 변수를 가리는 부분 (절 번호 추정) | 매개변수 `id`가 바깥 `id`를 가리는 섀도잉 | 🔴 A |
+| ⑦ | [리액트딥] 2.2 가상 DOM과 리액트 파이버 | 재조정에서 key가 하는 일, key가 없을 때 인덱스로 짝짓는 과정 | key 지적 |
+| ⑧ | [리액트딥] 3.1 리액트의 모든 훅 파헤치기 — 훅의 규칙 / useRef 부분 | 훅 호출 순서 규칙(early return 위치), 비제어 입력을 ref로 읽는 방식 | early return, 제어/비제어 질문 |
+| ⑨ | [JS딥] 40장 이벤트 — preventDefault / 폼 submit 부분 | 폼 제출 기본 동작 차단, `e.currentTarget` | 🟡 B (AddPage) |
+| ⑩ | [한입리액트] 5장 > 사용자 입력 처리하기 (목차 기준 추정) | 제어 컴포넌트(`value` + `onChange`) 패턴 | 제어/비제어 질문 |
+| ⑪ | [리액트딥] 3.1 리액트의 모든 훅 파헤치기 — useState 부분 + [리액트딥] 1.4 클로저 | 함수형 업데이트 `setX(prev => ...)`가 필요한 이유, 렌더링 시점의 값이 함수 안에 갇히는 원리 | 최종 리뷰 미리보기 (T7~T8 대비) |
+
+**책 밖 참고**
+- React Router 공식 문서 — Routing > Index Routes / Layout Routes, `useNavigate`의 `replace` 옵션 (중첩 라우트·Outlet은 책보다 정확함)
+- MDN `<a>` / `<button>` — 인터랙티브 요소 중첩 규칙(접근성)

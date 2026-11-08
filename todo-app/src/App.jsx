@@ -16,13 +16,9 @@ function App() {
     }, [todos]);
 
     function handleAddTodo(text) {
-        if (text.trim() === '') {
-            return;
-        }
-        setTodos([...todos, {
-            id: crypto.randomUUID(),
-            text: text
-        }]);
+        if (text.trim() === '') return false;
+        setTodos([...todos, { id: crypto.randomUUID(), text }]);
+        return true;
     }
 
     function handleDeleteTodo(id) {
@@ -30,8 +26,8 @@ function App() {
     }
 
     function handleEditTodo(id, text) {
-        if (text === null || text.trim() === '') {
-            return;
+        if (text.trim() === '') {
+            return false;
         }
 
         setTodos(todos.map(todo =>
@@ -47,14 +43,9 @@ function App() {
                     {
                         todos,
                         handleAddTodo, handleEditTodo, handleDeleteTodo}}></Outlet>}>
-                    <Route index element={<ListPage />}>
-                    </Route>
-                    <Route path={"/"} element={<ListPage />}>
-                    </Route>
-                    <Route path={"/new"} element={<AddPage />}>
-                    </Route>
-                    <Route path={"/todos/:id"} element={<DetailPage />}>
-                    </Route>
+                    <Route index element={<ListPage />} />
+                    <Route path="new" element={<AddPage />} />
+                    <Route path="todos/:id" element={<DetailPage />} />
                 </Route>
             </Routes>
         </>
